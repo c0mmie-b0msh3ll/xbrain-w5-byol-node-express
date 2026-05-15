@@ -8,8 +8,13 @@ $ErrorActionPreference = 'Stop'
 $accountId = aws sts get-caller-identity --query Account --output text
 $artifactBucket = "$StackName-artifacts-$accountId-$Region".ToLower()
 
-aws s3api head-bucket --bucket $artifactBucket 2>$null
-if ($LASTEXITCODE -ne 0) {
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+aws s3api head-bucket --bucket $artifactBucket --region $Region 2>$null
+$bucketExists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = $previousErrorActionPreference
+
+if (-not $bucketExists) {
   aws s3api create-bucket `
     --bucket $artifactBucket `
     --region $Region `

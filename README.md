@@ -1,109 +1,189 @@
-# Node.js + Express — BYOL starter (NOT YET SERVERLESS)
+# Node.js + Express on AWS Lambda
 
-This is a plain Express app. It runs locally as a normal Node HTTP server.
-**It does not run on Lambda yet.** Your group's job is to make it run on
-Lambda with the **minimum** code/config changes.
+Ứng dụng này là một Express app bình thường, được đưa lên AWS Lambda bằng
+`serverless-http` với lượng thay đổi tối thiểu:
 
+- `app.js` vẫn giữ nguyên logic Express
+- `server.js` vẫn dùng để chạy local
+- `lambda.js` là entrypoint dành riêng cho Lambda
+- `template.yaml` mô tả hạ tầng bằng CloudFormation/SAM
+- `deploy.ps1` đóng gói và deploy toàn bộ bằng một lệnh
+
+## 1. Yêu cầu trước khi chạy
+
+Cần có sẵn:
+
+- Node.js 22+
+- npm
+- AWS CLI v2
+- PowerShell
+- Một AWS account có quyền tạo:
+  - S3 bucket
+  - CloudFormation stack
+  - Lambda function
+  - API Gateway HTTP API
+  - CloudWatch Logs
+  - IAM role do CloudFormation tạo cho Lambda
+
+Kiểm tra nhanh:
+
+```powershell
+node -v
+npm -v
+aws --version
 ```
-node-express/
-├── app.js              ← The existing Express application (Lambda-unaware — DO NOT REWRITE this for Lambda specifics)
-├── server.js           ← Local dev runner: `npm start` → http://localhost:3000
-├── package.json        ← Only `express` listed; add anything else you need
-├── template.yaml       ← SAM scaffold — has TODO markers you must fill in
-├── samconfig.toml      ← stack name + region (us-west-2) pre-set
-└── README.md           ← this file
+
+## 2. Cấu hình AWS CLI
+
+Nếu máy chưa đăng nhập AWS CLI:
+
+```powershell
+aws configure
 ```
 
-## Step 0 — Confirm the app works in its current "non-serverless" form
+Nhập:
 
-```bash
+- `AWS Access Key ID`
+- `AWS Secret Access Key`
+- `Default region name`: nên dùng `us-west-2`
+- `Default output format`: có thể để `json`
+
+Kiểm tra credentials hiện tại:
+
+```powershell
+aws sts get-caller-identity
+```
+
+Nếu lệnh này trả về `Account` và `Arn`, credentials đã dùng được.
+
+## 3. Cài dependency
+
+```powershell
 npm install
-npm start
-# → listening on http://localhost:3000
+```
 
-# in another terminal:
+## 4. Chạy local
+
+```powershell
+npm start
+```
+
+App local mặc định chạy tại:
+
+```text
+http://localhost:3000
+```
+
+Test nhanh:
+
+```powershell
 curl http://localhost:3000/
 curl http://localhost:3000/api/hello/Lan
-curl -X POST http://localhost:3000/api/echo -H 'Content-Type: application/json' -d '{"hi":"there"}'
+curl -Method POST http://localhost:3000/api/echo `
+  -ContentType 'application/json' `
+  -Body '{"hi":"there"}'
 ```
 
-If those three curls work, you have a baseline to compare against later.
-
-## Step 1 — Pick your strategy
-
-You have several ways to get this on Lambda. Pick **one** (others are
-foot-notes for your reflection write-up):
-
-| # | Strategy | What you add | Code-change cost | Cold start estimate |
-|---|----------|--------------|------------------|---------------------|
-| A | `serverless-http` adapter | 1 new file (`lambda.js`), 1 npm dep | ~3 lines | 200–400 ms |
-| B | `@vendia/serverless-express` adapter | 1 new file, 1 npm dep | ~3 lines | 200–400 ms |
-| C | **AWS Lambda Web Adapter** (Lambda Layer + `run.sh`) | 1 shell script, edit `template.yaml` | 0 JS lines | +200 ms over native |
-| D | Roll your own | manual event → req → res translation | 30–80 lines | depends |
-
-Document **why** you picked your option in `NOTES.md` (you'll need this for
-the worksheet's Q4.1 + Q4.6).
-
-## Step 2 — Implement
-
-The repo intentionally leaves you these blanks:
-
-- `template.yaml` — `Handler:` is `TODO_FILL_IN`. Replace with the correct
-  value for your strategy.
-- `package.json` — add your chosen adapter to `dependencies` (or skip if
-  you use Lambda Web Adapter, which is a Layer not an npm package).
-- *New file(s)* — usually one new entrypoint file. Don't touch `app.js`.
-
-> **Hard rule:** `app.js` must NOT import anything from your adapter.
-> The whole pedagogy is that the framework code stays clean.
-
-## Step 3 - Deploy in one command
+## 5. Deploy bằng một lệnh
 
 ```powershell
 .\deploy.ps1
 ```
 
-`deploy.ps1` uses CloudFormation via the AWS CLI end-to-end: it ensures an
-artifact bucket exists, packages the Lambda source, deploys the stack, and
-prints the live API URL. Region defaults to `us-west-2`.
+Script sẽ tự:
 
-## Step 4 — Smoke-test the live URL
+1. lấy AWS Account ID hiện tại
+2. tạo S3 artifact bucket nếu chưa có
+3. package source code bằng CloudFormation
+4. deploy stack
+5. in ra API URL sau khi hoàn tất
 
-```bash
-export API=$(aws cloudformation describe-stacks \
-  --stack-name byol-node-express --region us-west-2 \
-  --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue' --output text)
+Mặc định:
+
+- Region: `us-west-2`
+- Stack name: `byol-node-express`
+
+Nếu muốn đổi:
+
+```powershell
+.\deploy.ps1 -Region us-east-1 -StackName my-express-lambda
+```
+
+## 6. Test API sau khi deploy
+
+Sau khi deploy xong, script sẽ in ra URL dạng:
+
+```text
+Deployed: https://xxxxxxxxxx.execute-api.us-west-2.amazonaws.com
+```
+
+Ví dụ:
+
+```powershell
+$API = aws cloudformation describe-stacks `
+  --stack-name byol-node-express `
+  --region us-west-2 `
+  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" `
+  --output text
 
 curl $API
-curl $API/api/hello/Lan
-curl -X POST $API/api/echo -H 'Content-Type: application/json' -d '{"hi":"there"}'
+curl "$API/api/hello/Lan"
+curl -Method POST "$API/api/echo" `
+  -ContentType 'application/json' `
+  -Body '{"hi":"there"}'
 ```
 
-All three should return the same JSON shape you saw locally in Step 0. If
-the JSON differs at all, something's wrong in your adapter wiring.
+## 7. Cấu trúc chính
 
-## Step 5 — Measure cold start
-
-```bash
-sam logs --stack-name byol-node-express --region us-west-2 -t
-# OR Console → CloudWatch → /aws/lambda/byol-node-express → latest stream
+```text
+.
+├── app.js          # Express app thuần
+├── server.js       # Chạy local
+├── lambda.js       # Lambda handler
+├── template.yaml   # CloudFormation/SAM template
+├── deploy.ps1      # Deploy một lệnh
+└── package.json
 ```
 
-Find the `REPORT` line. The `Init Duration` value is your cold-start cost.
-Record it in the worksheet.
+## 8. Gỡ hạ tầng
 
-## Teardown
-
-```bash
-sam delete --stack-name byol-node-express --region us-west-2
+```powershell
+aws cloudformation delete-stack `
+  --stack-name byol-node-express `
+  --region us-west-2
 ```
 
-## Common pitfalls
+Nếu đã đổi stack name hoặc region lúc deploy, dùng đúng giá trị tương ứng khi xóa.
 
-| Symptom | Probably... |
-|---------|-------------|
-| `sam deploy` fails with AccessDenied | Wrong region — must be `us-west-2` on workshop role |
-| 502 Bad Gateway from API URL | Handler name in `template.yaml` doesn't match the file/export you created |
-| "Cannot find module 'serverless-http'" in logs | Forgot to `npm install` your adapter; `sam build` copies `node_modules` |
-| Lambda returns body as string `"[object Object]"` | Adapter didn't serialize JSON — make sure `app.use(express.json())` is set (it is in `app.js`, just confirming) |
-| Routes return 404 in Lambda but work locally | Path stripping — API GW gives you full path, adapter handles this; if you wrote your own, this is bug class #1 |
+## 9. Lỗi thường gặp
+
+### `Unable to locate credentials`
+
+AWS CLI chưa được cấu hình. Chạy:
+
+```powershell
+aws configure
+```
+
+### `AccessDenied`
+
+IAM user/role hiện tại thiếu quyền với S3, CloudFormation, Lambda, API Gateway,
+CloudWatch Logs hoặc IAM.
+
+### API trả về `502 Bad Gateway`
+
+Kiểm tra:
+
+- `template.yaml` đang dùng `Handler: lambda.handler`
+- `lambda.js` có export `handler`
+- `npm install` đã chạy để có `serverless-http`
+
+### Deploy lại nhưng không có thay đổi
+
+Đây là bình thường. Script dùng:
+
+```text
+--no-fail-on-empty-changeset
+```
+
+nên không xem đó là lỗi.
