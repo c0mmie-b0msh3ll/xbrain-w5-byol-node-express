@@ -57,16 +57,15 @@ The repo intentionally leaves you these blanks:
 > **Hard rule:** `app.js` must NOT import anything from your adapter.
 > The whole pedagogy is that the framework code stays clean.
 
-## Step 3 — Build + deploy
+## Step 3 - Deploy in one command
 
-```bash
-sam build
-sam deploy --guided          # first time only — uses pre-set us-west-2
-# subsequent deploys:
-sam deploy
+```powershell
+.\deploy.ps1
 ```
 
-Region MUST be `us-west-2` if you're on the workshop participant account.
+`deploy.ps1` uses CloudFormation via the AWS CLI end-to-end: it ensures an
+artifact bucket exists, packages the Lambda source, deploys the stack, and
+prints the live API URL. Region defaults to `us-west-2`.
 
 ## Step 4 — Smoke-test the live URL
 
